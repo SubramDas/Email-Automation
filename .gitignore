@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+dist/
+coverage/
+private/
+credentials.json
+token.json
+oauth-token.json
+*.log

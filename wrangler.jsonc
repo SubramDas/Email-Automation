@@ -1,0 +1,23 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "telegram-email-drafting-agent",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-26",
+	"workers_dev": true,
+	"observability": {
+		"enabled": false
+	},
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "telegram-email-agent-state",
+			"database_id": "73a0c89f-ed4d-46b9-8472-53e525303cb4",
+			"migrations_dir": "migrations",
+		},
+	],
+}
