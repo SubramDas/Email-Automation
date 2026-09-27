@@ -149,6 +149,95 @@ function base64Lines(value: string): string {
   return value.match(/.{1,76}/g)?.join("\r\n") ?? "";
 }
 
+export interface QuotedMessage {
+  from: string;
+  date: string;
+  body: string;
+}
+
+function decodeBase64Url(value: string): string {
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(
+    normalized + "=".repeat((4 - (normalized.length % 4)) % 4),
+  );
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function htmlToText(value: string): string {
+  return (
+    value
+      // The agent places prior messages in blockquotes. Keep only the authored
+      // portion when this sent message is reused in a later follow-up.
+      .replace(/<blockquote\b[\s\S]*$/i, "")
+      .replace(/<(br|\/p|\/div|\/li|\/tr)\b[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&amp;/gi, "&")
+      .replace(/&#(\d+);/g, (_, code: string) =>
+        String.fromCodePoint(Number(code)),
+      )
+      .replace(/&#x([\da-f]+);/gi, (_, code: string) =>
+        String.fromCodePoint(parseInt(code, 16)),
+      )
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
+function htmlEscape(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function quoteHeader(message: QuotedMessage): string {
+  return `On ${message.date} ${message.from} wrote:`;
+}
+
+function renderHtmlQuote(quotedHistory: QuotedMessage[], index = 0): string {
+  const message = quotedHistory[index];
+  if (!message) return "";
+  const nested = renderHtmlQuote(quotedHistory, index + 1);
+  return `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex"><div dir="ltr" class="gmail_attr">${htmlEscape(quoteHeader(message))}</div><div>${htmlEscape(message.body).replaceAll("\n", "<br>")}</div>${nested}</blockquote>`;
+}
+
+function renderHtmlMessage(
+  body: string,
+  quotedHistory: QuotedMessage[],
+): string {
+  const current = `<div>${htmlEscape(body).replaceAll("\n", "<br>")}</div>`;
+  const quoted = renderHtmlQuote(quotedHistory);
+  return `<html><body>${current}${quoted}</body></html>`;
+}
+
+function renderPlainMessage(
+  body: string,
+  quotedHistory: QuotedMessage[],
+): string {
+  const renderQuote = (index: number, depth: number): string => {
+    const message = quotedHistory[index];
+    if (!message) return "";
+    const prefix = "> ".repeat(depth + 1);
+    const current = `${prefix}${quoteHeader(message)}\n\n${message.body
+      .split("\n")
+      .map((line) => `${prefix}${line}`)
+      .join("\n")}`;
+    const nested = renderQuote(index + 1, depth + 1);
+    return nested ? `${current}\n${nested}` : current;
+  };
+  return [body, ...(quotedHistory.length ? [renderQuote(0, 0)] : []), ""].join(
+    "\n\n",
+  );
+}
+
 export async function createGmailDraft(
   recipient: string,
   subject: string,
@@ -161,8 +250,12 @@ export async function createGmailDraft(
     threadId?: string;
     inReplyTo?: string;
   },
+  quotedHistory: QuotedMessage[] = [],
 ): Promise<{ draftId: string; threadId: string }> {
   const boundary = `agent_${crypto.randomUUID().replaceAll("-", "")}`;
+  const alternativeBoundary = `${boundary}_alt`;
+  const plainBody = renderPlainMessage(body, quotedHistory);
+  const htmlBody = renderHtmlMessage(body, quotedHistory);
   const parts = [
     `To: ${recipient}`,
     `Subject: ${encodeSubject(subject)}`,
@@ -185,10 +278,20 @@ export async function createGmailDraft(
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
         "",
         `--${boundary}`,
+        `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+        "",
+        `--${alternativeBoundary}`,
         'Content-Type: text/plain; charset="UTF-8"',
         "Content-Transfer-Encoding: 8bit",
         "",
-        body,
+        plainBody,
+        `--${alternativeBoundary}`,
+        'Content-Type: text/html; charset="UTF-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        htmlBody,
+        `--${alternativeBoundary}--`,
+        "",
         `--${boundary}`,
         `Content-Type: ${resume.mimeType}; name="resume.pdf"`,
         "Content-Transfer-Encoding: base64",
@@ -200,10 +303,19 @@ export async function createGmailDraft(
       ].join("\r\n")
     : [
         ...parts,
+        `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+        "",
+        `--${alternativeBoundary}`,
         'Content-Type: text/plain; charset="UTF-8"',
         "Content-Transfer-Encoding: 8bit",
         "",
-        body,
+        plainBody,
+        `--${alternativeBoundary}`,
+        'Content-Type: text/html; charset="UTF-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        htmlBody,
+        `--${alternativeBoundary}--`,
         "",
       ].join("\r\n");
 
@@ -285,9 +397,8 @@ export async function createDraftFromDrive(
 ): Promise<string> {
   const { template, resume, accessToken } = await loadConfiguredAssets(env);
   const { subject, body } = renderTemplate(template, details);
-  return (
-    await createGmailDraft(recipient, subject, body, resume, accessToken)
-  ).draftId;
+  return (await createGmailDraft(recipient, subject, body, resume, accessToken))
+    .draftId;
 }
 
 export async function createTrackedOriginalDraftFromDrive(
@@ -321,18 +432,20 @@ export async function createTrackedDraftFromDrive(
   accessToken: string,
   tracking: { id: string; step: number; threadId?: string; inReplyTo?: string },
   attachResume: boolean,
+  quotedHistory: QuotedMessage[] = [],
 ): Promise<string> {
   const resume = attachResume
     ? await loadDriveFile(env, env.DRIVE_RESUME_FILE_ID!, accessToken)
     : undefined;
   return (
     await createGmailDraft(
-    recipient,
-    subject,
-    body,
-    resume,
-    accessToken,
+      recipient,
+      subject,
+      body,
+      resume,
+      accessToken,
       tracking,
+      quotedHistory,
     )
   ).draftId;
 }
@@ -428,10 +541,7 @@ export async function listGmailHistory(
       for (const added of event.messagesAdded ?? [])
         if (added.message?.id) ids.add(added.message.id);
       for (const labelChange of event.labelsAdded ?? [])
-        if (
-          labelChange.labelIds?.includes("SENT") &&
-          labelChange.message?.id
-        )
+        if (labelChange.labelIds?.includes("SENT") && labelChange.message?.id)
           ids.add(labelChange.message.id);
     }
     pageToken = result.nextPageToken;
@@ -493,4 +603,85 @@ export async function getGmailThread(
         ]
       : [],
   );
+}
+
+export async function getSentThreadHistory(
+  accessToken: string,
+  threadId: string,
+): Promise<QuotedMessage[]> {
+  interface Part {
+    mimeType?: string;
+    body?: { data?: string };
+    parts?: Part[];
+  }
+  const result = await gmailJson<{
+    messages?: Array<{
+      internalDate?: string;
+      labelIds?: string[];
+      payload?: {
+        headers?: GmailHeader[];
+        mimeType?: string;
+        body?: { data?: string };
+        parts?: Part[];
+      };
+    }>;
+  }>(`threads/${encodeURIComponent(threadId)}?format=full`, accessToken);
+  const sent = (result.messages ?? [])
+    .filter((message) => message.labelIds?.includes("SENT"))
+    .sort((a, b) => Number(b.internalDate ?? 0) - Number(a.internalDate ?? 0));
+  return sent.flatMap((message) => {
+    const payload = message.payload;
+    if (!payload) return [];
+    const parts: Part[] = [];
+    const collect = (part: Part): void => {
+      if (part.parts?.length) part.parts.forEach(collect);
+      else parts.push(part);
+    };
+    collect(payload);
+    const htmlPart = parts.find(
+      (part) => part.mimeType === "text/html" && part.body?.data,
+    );
+    const plainPart = parts.find(
+      (part) => part.mimeType === "text/plain" && part.body?.data,
+    );
+    const encodedBody =
+      htmlPart?.body?.data ?? plainPart?.body?.data ?? payload.body?.data;
+    if (!encodedBody) return [];
+    const decodedBody = decodeBase64Url(encodedBody);
+    const body = htmlPart ? htmlToText(decodedBody) : decodedBody.trim();
+    if (!body) return [];
+    const headers = payload.headers ?? [];
+    const getHeader = (name: string): string =>
+      headers.find((item) => item.name?.toLowerCase() === name.toLowerCase())
+        ?.value ?? "";
+    const from = getHeader("From");
+    const rawDate = getHeader("Date");
+    const parsedDate = rawDate
+      ? new Date(rawDate)
+      : new Date(Number(message.internalDate ?? 0));
+    const date = Number.isNaN(parsedDate.getTime())
+      ? rawDate
+      : gmailStyleDate(parsedDate);
+    const displayFrom = from.replace(
+      /^\s*"?([^"<>]+?)"?\s*<([^<>]+)>\s*$/,
+      "$1, <$2>",
+    );
+    return [{ from: displayFrom || "Unknown sender", date, body }];
+  });
+}
+
+function gmailStyleDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("weekday")}, ${part("day")} ${part("month")}, ${part("year")}, ${part("hour")}:${part("minute")} ${part("dayPeriod").toLowerCase()}`;
 }

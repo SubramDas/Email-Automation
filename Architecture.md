@@ -13,6 +13,7 @@ Status: **original draft workflow deployed and owner-verified; follow-up workflo
 - Follow-ups are limited to three drafts per original. They become eligible 3 days after the original is sent, then 5 days after follow-up 1 is sent, then 7 days after follow-up 2 is sent. Draft creation alone never advances the schedule.
 - Any reply in the tracked Gmail conversation cancels future follow-ups. An already-created follow-up draft remains in Gmail for the owner to inspect; the agent does not delete it. All follow-ups remain drafts for manual review/send. Only follow-up 2 includes the configured resume.
 - If a follow-up draft is still unsent 24 hours after creation, send one Telegram reminder; do not repeat it.
+- Follow-up drafts include the sent messages from the tracked thread as Gmail-style nested collapsed quoted history. Each sent message contributes only its authored text so earlier quoted history is nested once and not duplicated.
 
 ## Data flow
 

@@ -19,6 +19,7 @@ The agent must prepare drafts only. Sending remains a manual action in Gmail aft
    - Follow-up 2: 5 days after Follow-up 1 was actually sent.
    - Follow-up 3: 7 days after Follow-up 2 was actually sent.
 8. Every follow-up is a Gmail draft for me to review and send manually. An unsent follow-up draft does not start the next timer. Only follow-up 2 includes the configured resume.
+   Each follow-up includes the sent conversation history below its own text in Gmail's collapsible, nested quote format: follow-up 1 quotes the original; follow-up 2 nests the original under follow-up 1; follow-up 3 nests follow-up 1 and the original under follow-up 2, with progressively deeper indentation.
 9. If a follow-up draft remains unsent for 24 hours, send one Telegram reminder. Do not repeat the reminder.
 10. If a reply arrives in the tracked conversation at any time, the agent cancels all future follow-ups. Any follow-up draft that already exists stays in Gmail for me to inspect; the agent does not delete it.
 

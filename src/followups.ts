@@ -3,6 +3,7 @@ import {
   getGmailAccessToken,
   getGmailHistoryId,
   getGmailThread,
+  getSentThreadHistory,
   gmailDraftExists,
   listGmailHistory,
   loadFollowupTemplate,
@@ -97,7 +98,7 @@ async function startAfterOriginalSent(
       hasReply
         ? null
         : sentAt +
-          (row.test_mode ? TEST_DELAY_SECONDS : FOLLOWUP_DELAY_DAYS[1] * DAY),
+            (row.test_mode ? TEST_DELAY_SECONDS : FOLLOWUP_DELAY_DAYS[1] * DAY),
       hasReply ? now : null,
       now,
       id,
@@ -224,7 +225,10 @@ async function reconcileSentDrafts(
 async function syncSentMessageByThread(
   env: Env,
   accessToken: string,
-  message: { threadId: string; headers: Array<{ name?: string; value?: string }> },
+  message: {
+    threadId: string;
+    headers: Array<{ name?: string; value?: string }>;
+  },
   sentAt: number,
   now: number,
 ): Promise<void> {
@@ -252,10 +256,7 @@ async function syncSentMessageByThread(
   )
     return;
 
-  if (
-    row.state === "awaiting_original_sent" &&
-    sentAt >= row.created_at
-  ) {
+  if (row.state === "awaiting_original_sent" && sentAt >= row.created_at) {
     await startAfterOriginalSent(
       env,
       accessToken,
@@ -412,6 +413,12 @@ async function createDueDrafts(
       }
       const safeInReplyTo =
         inReplyTo && /^<[^<>\r\n]+>$/.test(inReplyTo) ? inReplyTo : undefined;
+      const quotedHistory = await getSentThreadHistory(
+        accessToken,
+        row.thread_id!,
+      );
+      if (!quotedHistory.length)
+        throw new Error("No sent message history was found for this thread.");
       createAttempted = true;
       const draftId = await createTrackedDraftFromDrive(
         env,
@@ -426,6 +433,7 @@ async function createDueDrafts(
           inReplyTo: safeInReplyTo,
         },
         step === 2,
+        quotedHistory,
       );
       const reminderAt = now + DAY;
       await env.DB.prepare(

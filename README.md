@@ -97,6 +97,8 @@ The setup requests `gmail.compose`, `gmail.readonly`, and `drive.file`. `gmail.r
 
 All five selected text files must use the same basic format: `Subject: ...`, a blank line, then the message body. Supported placeholders are `{{name}}`, `{{company}}`, `{{job_title}}`, and `{{job_id}}`. Each follow-up subject must match the original subject, optionally prefixed with `Re:`, so Gmail keeps it in the same conversation. The templates should not include recipient headers or other email headers.
 
+Follow-up drafts include the sent messages from the Gmail thread beneath the template text in Gmail-style collapsible nested quoted history. Each message quotes the prior message, with deeper indentation for older messages. The quote is built from each sent message's authored text to avoid repeating older quoted sections inside the chain.
+
 Google OAuth apps left in Testing mode expire test-user authorizations after seven days, so repeat this setup when Google authorization expires. [Google testing-mode limits](https://support.google.com/cloud/answer/15549945?hl=en)
 
 To renew production authorization after expiration, rerun `npm run google:setup` locally, authorize the same Gmail account, then update the Worker secrets from `.dev.vars` with `npx wrangler secret bulk .dev.vars`. The Worker will use the updated refresh token after Wrangler applies the secrets.
