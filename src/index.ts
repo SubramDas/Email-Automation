@@ -2,6 +2,7 @@ import { missingConfiguration } from "./config";
 import { processTelegramUpdate } from "./conversation";
 import type { Env, TelegramUpdate } from "./types";
 import { secretMatches } from "./telegram";
+import { processScheduledFollowups } from "./followups";
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -52,6 +53,7 @@ const worker: ExportedHandler<Env> = {
     await env.DB.prepare("DELETE FROM conversations WHERE expires_at <= ?")
       .bind(Math.floor(Date.now() / 1000))
       .run();
+    await processScheduledFollowups(env);
   },
 };
 

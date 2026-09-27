@@ -8,6 +8,10 @@ export interface Env {
   GOOGLE_REFRESH_TOKEN?: string;
   DRIVE_TEMPLATE_FILE_ID?: string;
   DRIVE_RESUME_FILE_ID?: string;
+  DRIVE_FOLLOWUP_1_FILE_ID?: string;
+  DRIVE_FOLLOWUP_2_FILE_ID?: string;
+  DRIVE_FOLLOWUP_3_FILE_ID?: string;
+  FOLLOWUP_TEST_MODE?: string;
 }
 
 export interface RequestDetails {

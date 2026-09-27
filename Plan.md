@@ -1,6 +1,6 @@
 # Implementation Plan: Telegram-Controlled Email Drafting Agent
 
-This plan turns the goals in [Task.md](Task.md) into an implementation sequence. The repository contains the updated brief, architecture note, initial Cloudflare Worker scaffold, and a local Google OAuth/Picker bootstrap utility. Provider credentials and deployment setup still need to be completed before deployment.
+This plan turns the goals in [Task.md](Task.md) into an implementation sequence. The original draft workflow is deployed; the requested follow-up workflow is a future implementation phase and is not yet available.
 
 ## 1. Resolve product and deployment decisions
 
@@ -201,3 +201,17 @@ Complete and maintain these project documents:
 - [ ] Telegram responses accurately report results and errors.
 - [ ] Security, privacy, verification, and pilot steps completed.
 - [ ] Setup and operating documentation completed.
+- [x] Follow-up requirements and implementation sequence recorded.
+
+## 14. Enable the implemented follow-up workflow
+
+The follow-up workflow is implemented locally but is not yet active on the deployed Worker. The following owner setup and deployment steps remain.
+
+1. Product decisions are confirmed in [Architecture.md](Architecture.md): timers start from the actual sent time of the prior email; only follow-up 2 attaches the resume; unsent drafts do not advance the schedule; send one reminder after 24 hours if a follow-up draft remains unsent; leave existing drafts untouched if a reply arrives, and stop future follow-ups.
+2. The owner has uploaded three separate private Drive templates. Run `npm run google:setup`, authorize `gmail.compose`, `gmail.readonly`, and `drive.file`, and select the original template, resume, and three follow-up templates.
+3. Apply migration `0002_followups.sql` remotely, deploy the Worker, and upload updated `.dev.vars` as encrypted secrets. The configured hourly Cron Trigger becomes active with the deployment.
+4. The implementation tracks manual sends using the stored Gmail thread ID and draft disappearance, follows replies through Gmail thread IDs, creates drafts in the original thread, attaches the resume only to follow-up 2, and sends one reminder after 24 hours if a draft remains unsent.
+5. Creation timeouts pause the request in an uncertain state to avoid automatic duplicates. Inspect Gmail before any manual recovery.
+6. Verify scenarios before relying on the feature: original never sent; original sent; each follow-up left unsent or manually sent; reply before due; reply after draft creation; Gmail sync/API failure; OAuth revocation; scheduler overlap/retry; third follow-up completion; attachment only on follow-up 2; subject/thread matching; and no Gmail send/delete calls.
+7. Optional short test: deploy temporarily with one-minute timers and a minutely Cron Trigger, verify a full draft chain plus reply stopping, then redeploy with the regular hourly schedule.
+8. Review Google OAuth scope requirements and current Cloudflare Cron/D1 quotas before enabling on a live Gmail account.

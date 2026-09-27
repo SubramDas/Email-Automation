@@ -14,6 +14,13 @@ The agent must prepare drafts only. Sending remains a manual action in Gmail aft
 4. It preserves the template's intent and tone. It must not invent experience, qualifications, company facts, or other personal claims. If a useful detail is unavailable, it leaves it out or asks me.
 5. As soon as the required details are valid and the email is prepared, the agent creates a Gmail draft addressed to the supplied email, with the completed subject and body, and attaches my configured resume.
 6. It confirms draft creation in Telegram and provides enough information to find the draft in Gmail. I review it in Gmail and send it myself.
+7. After Gmail confirms that the original email was sent, the agent tracks the conversation for a reply. If there is no reply, it creates follow-up drafts on this schedule:
+   - Follow-up 1: 3 days after the original email was sent.
+   - Follow-up 2: 5 days after Follow-up 1 was actually sent.
+   - Follow-up 3: 7 days after Follow-up 2 was actually sent.
+8. Every follow-up is a Gmail draft for me to review and send manually. An unsent follow-up draft does not start the next timer. Only follow-up 2 includes the configured resume.
+9. If a follow-up draft remains unsent for 24 hours, send one Telegram reminder. Do not repeat the reminder.
+10. If a reply arrives in the tracked conversation at any time, the agent cancels all future follow-ups. Any follow-up draft that already exists stays in Gmail for me to inspect; the agent does not delete it.
 
 ## Intended work
 
@@ -25,6 +32,7 @@ The agent must prepare drafts only. Sending remains a manual action in Gmail aft
 - Integrate with Gmail to create drafts and attach the configured resume.
 - Report success or a useful error in Telegram, without claiming a draft was created unless Gmail confirms it.
 - Document setup, configuration, permissions, and operational behavior.
+- Track sent original messages and follow-up messages, detect replies, and create up to three manually reviewed follow-up drafts using separate templates and the defined schedule.
 
 ## Improvements to the initial plan
 
@@ -44,6 +52,8 @@ The agent must prepare drafts only. Sending remains a manual action in Gmail aft
 - The agent does not send email.
 - The generated message does not contain unsupported personal or company claims.
 - Telegram receives a truthful confirmation or actionable failure message for each request.
+- An original email starts a maximum of three follow-up drafts at +3 days, then +5 and +7 days from the preceding manual sends; a reply prevents later drafts.
+- Follow-up drafts remain unsent, only follow-up 2 carries the resume, and an unsent draft gets at most one Telegram reminder after 24 hours.
 - Secrets and personal files are not committed to the repository or written to routine logs.
 
 ## Current implementation choices

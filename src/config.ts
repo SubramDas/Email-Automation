@@ -9,6 +9,9 @@ const REQUIRED_SETTINGS = [
   "GOOGLE_REFRESH_TOKEN",
   "DRIVE_TEMPLATE_FILE_ID",
   "DRIVE_RESUME_FILE_ID",
+  "DRIVE_FOLLOWUP_1_FILE_ID",
+  "DRIVE_FOLLOWUP_2_FILE_ID",
+  "DRIVE_FOLLOWUP_3_FILE_ID",
 ] as const;
 
 export function missingConfiguration(env: Env): string[] {

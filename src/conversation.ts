@@ -1,4 +1,4 @@
-import { createDraftFromDrive } from "./google";
+import { createTrackedOriginalDraftFromDrive } from "./google";
 import { sendTelegramMessage } from "./telegram";
 import type { Env, RequestDetails, TelegramUpdate } from "./types";
 import { mergeDetails, parseDetails, validateDetails } from "./validation";
@@ -66,6 +66,27 @@ export async function processTelegramUpdate(
 
   const userKey = String(userId);
   const chatKey = String(chatId);
+  const retryFollowups = text.match(
+    /^\/followups_retry(?:@\w+)?\s+([0-9a-f-]{36})$/i,
+  );
+  if (retryFollowups) {
+    const now = Math.floor(Date.now() / 1000);
+    const result = await env.DB.prepare(
+      `UPDATE followups SET state = 'active', due_at = ?, pending_draft_id = NULL,
+       pending_step = NULL, reminder_at = NULL, reminder_sent_at = NULL, updated_at = ?
+       WHERE id = ? AND state IN ('blocked', 'creation_uncertain')`,
+    )
+      .bind(now, now, retryFollowups[1])
+      .run();
+    await sendTelegramMessage(
+      env,
+      chatKey,
+      result.meta.changes
+        ? "Follow-up processing resumed. Check Gmail for any existing draft first; remove an unwanted duplicate before this retry creates another draft."
+        : "No paused follow-up sequence matched that ID.",
+    );
+    return;
+  }
   if (/^\/(cancel|restart)(@\w+)?$/i.test(text)) {
     await env.DB.prepare("DELETE FROM conversations WHERE telegram_user_id = ?")
       .bind(userKey)
@@ -88,9 +109,20 @@ export async function processTelegramUpdate(
   }
 
   await storePending(env, userKey, chatKey, details);
+  const trackingId = crypto.randomUUID();
   let draftId: string;
+  let threadId: string;
+  let historyCursor: string;
   try {
-    draftId = await createDraftFromDrive(env, details.email!, details);
+    const created = await createTrackedOriginalDraftFromDrive(
+      env,
+      details.email!,
+      details,
+      trackingId,
+    );
+    draftId = created.draftId;
+    threadId = created.threadId;
+    historyCursor = created.historyCursor;
   } catch (error) {
     const messageText =
       error instanceof Error ? error.message : "Draft creation failed.";
@@ -105,11 +137,30 @@ export async function processTelegramUpdate(
   await env.DB.prepare("DELETE FROM conversations WHERE telegram_user_id = ?")
     .bind(userKey)
     .run();
+  const now = Math.floor(Date.now() / 1000);
+  const testMode = /^(1|true|yes)$/i.test(env.FOLLOWUP_TEST_MODE ?? "");
+  await env.DB.prepare(
+    `INSERT INTO followups
+      (id, chat_id, details_json, created_at, state, test_mode, original_draft_id, history_cursor, thread_id, updated_at)
+     VALUES (?, ?, ?, ?, 'awaiting_original_sent', ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      trackingId,
+      chatKey,
+      JSON.stringify(details),
+      now,
+      testMode ? 1 : 0,
+      draftId,
+      historyCursor,
+      threadId,
+      now,
+    )
+    .run();
   try {
     await sendTelegramMessage(
       env,
       chatKey,
-      `Gmail draft created.\nTo: ${details.email}\nSubject: ${details.job_title} ${details.job_id} - ${details.company}\nDraft ID: ${draftId}\n\nPlease review the message and resume in Gmail before sending.`,
+      `Gmail draft created.${testMode ? " TEST MODE: this request uses one-minute follow-up timers." : ""}\nTo: ${details.email}\nSubject: ${details.job_title} ${details.job_id} - ${details.company}\nDraft ID: ${draftId}\n\nPlease review the message and resume in Gmail before sending.`,
     );
   } catch {
     // A messaging failure must never trigger another Gmail draft creation.
