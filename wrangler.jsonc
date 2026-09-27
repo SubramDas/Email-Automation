@@ -7,9 +7,12 @@
 	"observability": {
 		"enabled": false
 	},
+	"vars": {
+		"FOLLOWUP_TEST_MODE": "false"
+	},
 	"triggers": {
 		"crons": [
-			"* * * * *"
+			"0 * * * *"
 		]
 	},
 	"d1_databases": [
